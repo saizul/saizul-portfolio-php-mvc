@@ -1,0 +1,162 @@
+# ═══════════════════════════════════════════════════════════════
+# Saizul Amin Portfolio — Production .htaccess
+# Apache 2.4 / LiteSpeed / cPanel
+# ═══════════════════════════════════════════════════════════════
+
+Options -Indexes -MultiViews
+ServerSignature Off
+
+# ── URL Routing (Front Controller) ───────────────────────────
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Remove trailing slash (except root)
+    RewriteCond %{REQUEST_URI} ^(.+)/$
+    RewriteCond %{REQUEST_URI} !^/$
+    RewriteRule ^ %1 [R=301,L]
+
+    # Serve real files/dirs directly
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Route everything else through index.php
+    RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+# ── Security Headers ──────────────────────────────────────────
+<IfModule mod_headers.c>
+    # Prevent MIME sniffing
+    Header always set X-Content-Type-Options "nosniff"
+
+    # Clickjacking protection
+    Header always set X-Frame-Options "SAMEORIGIN"
+
+    # XSS protection (legacy browsers)
+    Header always set X-XSS-Protection "1; mode=block"
+
+    # Referrer policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Permissions policy
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+    # HSTS (enable after SSL is confirmed working)
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+    # Remove server signature
+    Header always unset X-Powered-By
+    Header always unset Server
+
+    # Content Security Policy
+    Header always set Content-Security-Policy "default-src 'self'; \
+        script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com https://cdn.jsdelivr.net; \
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; \
+        font-src 'self' https://fonts.gstatic.com; \
+        img-src 'self' data: https:; \
+        connect-src 'self' https://unpkg.com https://cdn.jsdelivr.net; \
+        frame-ancestors 'self';"
+</IfModule>
+
+# ── Compression (Gzip/Brotli) ─────────────────────────────────
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE text/javascript
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE image/svg+xml
+    AddOutputFilterByType DEFLATE font/woff2
+
+    # Decompression for proxies
+    <IfModule mod_headers.c>
+        Header append Vary Accept-Encoding
+    </IfModule>
+</IfModule>
+
+# ── Browser Caching ───────────────────────────────────────────
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # HTML — short cache (content changes)
+    ExpiresByType text/html                "access plus 1 hour"
+
+    # Assets — long cache (fingerprinted)
+    ExpiresByType text/css                 "access plus 1 year"
+    ExpiresByType application/javascript   "access plus 1 year"
+    ExpiresByType text/javascript          "access plus 1 year"
+
+    # Images
+    ExpiresByType image/jpeg               "access plus 6 months"
+    ExpiresByType image/png                "access plus 6 months"
+    ExpiresByType image/webp               "access plus 6 months"
+    ExpiresByType image/gif                "access plus 6 months"
+    ExpiresByType image/svg+xml            "access plus 6 months"
+    ExpiresByType image/x-icon             "access plus 1 year"
+
+    # Fonts
+    ExpiresByType font/woff2               "access plus 1 year"
+    ExpiresByType font/woff                "access plus 1 year"
+    ExpiresByType application/font-woff2   "access plus 1 year"
+
+    # Data
+    ExpiresByType application/json         "access plus 0 seconds"
+    ExpiresByType application/xml          "access plus 1 hour"
+    ExpiresByType text/xml                 "access plus 1 hour"
+</IfModule>
+
+<IfModule mod_headers.c>
+    <FilesMatch "\.(css|js|woff2|woff|ttf|svg|jpg|jpeg|png|webp|gif|ico)$">
+        Header append Cache-Control "public, immutable"
+    </FilesMatch>
+</IfModule>
+
+# ── Block access to sensitive files ───────────────────────────
+<FilesMatch "(\.env|\.git|composer\.(json|lock)|package\.json|PLAN\.md|DEPLOYMENT\.md|DESIGN_SYSTEM\.md)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Block access to app, config, database directories
+<IfModule mod_rewrite.c>
+    RewriteRule ^(app|config|database|storage|\.git)(/|$) - [F,L]
+</IfModule>
+
+# ── Protect install.php after installation ────────────────────
+# Uncomment after install is complete:
+# <Files "install.php">
+#     Order Allow,Deny
+#     Deny from all
+# </Files>
+
+# ── Force HTTPS (enable after SSL certificate is installed) ───
+# <IfModule mod_rewrite.c>
+#     RewriteCond %{HTTPS} off
+#     RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+# </IfModule>
+
+# ── www redirect (choose one) ─────────────────────────────────
+# Option A: redirect www → non-www
+# <IfModule mod_rewrite.c>
+#     RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+#     RewriteRule ^ https://%1%{REQUEST_URI} [R=301,L]
+# </IfModule>
+
+# Option B: redirect non-www → www
+# <IfModule mod_rewrite.c>
+#     RewriteCond %{HTTP_HOST} !^www\. [NC]
+#     RewriteRule ^ https://www.%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+# </IfModule>
+
+# ── Custom error pages ────────────────────────────────────────
+ErrorDocument 404 /index.php
+ErrorDocument 403 /index.php
+ErrorDocument 500 /index.php
+
+# ── Disable ETags (reduce headers) ───────────────────────────
+FileETag None
+<IfModule mod_headers.c>
+    Header unset ETag
+</IfModule>
