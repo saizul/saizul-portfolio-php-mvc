@@ -21,6 +21,10 @@ function renderBlock(array $b): string
 {
     $e = fn($s) => htmlspecialchars((string)($s ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $id = 'block-' . ($b['id'] ?? uniqid());
+    // Callable handles so the helpers below can be called inside heredoc/string interpolation: {$btnHtml(...)}
+    $btnHtml     = 'btnHtml';
+    $headingHtml = 'headingHtml';
+    $captionHtml = 'captionHtml';
 
     switch ($b['type'] ?? '') {
 
@@ -43,15 +47,16 @@ function renderBlock(array $b): string
 HTML;
 
         case 'text':
-            $tag   = in_array($b['headingSize'] ?? 'h2', ['h1','h2','h3','h4']) ? $b['headingSize'] : 'h2';
+            $tag   = in_array($b['headingSize'] ?? 'h2', ['h1','h2','h3','h4'], true) ? ($b['headingSize'] ?? 'h2') : 'h2';
             $align = $b['align'] ?? 'left';
             $heading = $b['heading'] ?? '';
             $body    = $b['body']    ?? '';
+            $bodyMargin = $align === 'center' ? 'margin:0 auto' : '';
             return <<<HTML
 <section id="{$id}" class="section-text" style="padding:var(--section-py,80px) 0;">
   <div class="container" style="text-align:{$align}">
     {$headingHtml($tag, $heading, $e)}
-    <p class="body-lg reveal" style="max-width:720px;color:var(--grey-300,#94a3b8);{$align==='center'?'margin:0 auto':''}">{$e($body)}</p>
+    <p class="body-lg reveal" style="max-width:720px;color:var(--grey-300,#94a3b8);{$bodyMargin}">{$e($body)}</p>
   </div>
 </section>
 HTML;
@@ -93,11 +98,12 @@ HTML;
             $align = $b['align']   ?? 'center';
             $bg    = $b['bgColor'] ?? '';
             $style = $bg ? "background:$bg;" : '';
+            $bodyMargin = $align === 'center' ? 'margin-left:auto;margin-right:auto' : '';
             return <<<HTML
 <section id="{$id}" class="section-cta" style="{$style}padding:var(--section-py,80px) 0;">
   <div class="container reveal" style="text-align:{$align}">
     <h2 class="heading-1" style="margin-bottom:16px;">{$e($b['heading'] ?? '')}</h2>
-    <p class="body-lg" style="color:#94a3b8;margin-bottom:32px;max-width:480px;{$align==='center'?'margin-left:auto;margin-right:auto':''}">{$e($b['body'] ?? '')}</p>
+    <p class="body-lg" style="color:#94a3b8;margin-bottom:32px;max-width:480px;{$bodyMargin}">{$e($b['body'] ?? '')}</p>
     {$btnHtml($b['btnText'] ?? 'Get in Touch', $b['btnUrl'] ?? '/contact', 'btn btn-primary')}
   </div>
 </section>
@@ -143,7 +149,7 @@ HTML;
             $entries = implode('', array_map(fn($item) =>
                 "<div class=\"timeline-item reveal\">"
                 ."<div class=\"timeline-date\">{$e($item['date']??'')}</div>"
-                ."<h3 class=\"timeline-role\">{$e($item['role']??'')} {$item['company'] ? '— '.$e($item['company']) : ''}</h3>"
+                ."<h3 class=\"timeline-role\">{$e($item['role']??'')}".(!empty($item['company']) ? ' — '.$e($item['company']) : '')."</h3>"
                 ."<p class=\"timeline-desc\">{$e($item['desc']??'')}</p></div>",
                 $items
             ));
@@ -162,10 +168,11 @@ HTML;
 
         case 'two-col':
             $lw = max(20, min(80, (int)($b['leftWidth'] ?? 50)));
+            $rw = 100 - $lw;
             return <<<HTML
 <section id="{$id}" class="section-twocol" style="padding:var(--section-py,80px) 0;">
   <div class="container">
-    <div style="display:grid;grid-template-columns:{$lw}fr {$(100-$lw)}fr;gap:48px;align-items:start;" class="reveal">
+    <div style="display:grid;grid-template-columns:{$lw}fr {$rw}fr;gap:48px;align-items:start;" class="reveal">
       <div><p style="color:#94a3b8;line-height:1.8;">{$e($b['left'] ?? '')}</p></div>
       <div><p style="color:#94a3b8;line-height:1.8;">{$e($b['right'] ?? '')}</p></div>
     </div>
