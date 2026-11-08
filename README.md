@@ -12,6 +12,6 @@ Copy `.env.example` to `.env` and fill your values.
 
 ## CI
 
-Every push and pull request runs `php -l` on all PHP files with PHP 8.1, 8.2 and 8.3 (`.github/workflows/php-lint.yml`).
+Every push and pull request runs `php -l` on all PHP files with PHP 8.2, 8.3 and 8.4 (the code uses PHP 8.2 features such as the standalone `true` type; `.github/workflows/php-lint.yml`).
 
 **Author:** [Saizul Amin](https://saizul.com)
