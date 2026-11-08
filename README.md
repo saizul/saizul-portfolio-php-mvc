@@ -4,4 +4,14 @@ A personal-brand / portfolio platform built from scratch with a lightweight cust
 
 Copy `.env.example` to `.env` and fill your values.
 
+## Security
+
+- **Keep `.env` outside the web root.** It holds database credentials and `APP_KEY`. Only `public/` should be reachable from the web: create `.env` in the project root next to `app/` and `config/`, never inside `public/`. Where your host allows it, point the domain's document root at `public/` (see `DEPLOYMENT.md`); if you rely on the root `.htaccess` redirect instead, check that `https://yourdomain.com/.env` returns 403 or 404.
+- Never commit `.env` (it is in `.gitignore`); only `.env.example` with placeholder values belongs in the repository.
+- Delete `public/install.php` if the setup wizard did not remove itself.
+
+## CI
+
+Every push and pull request runs `php -l` on all PHP files with PHP 8.1, 8.2 and 8.3 (`.github/workflows/php-lint.yml`).
+
 **Author:** [Saizul Amin](https://saizul.com)
