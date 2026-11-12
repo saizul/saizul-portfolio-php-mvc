@@ -1,4 +1,14 @@
-<?php $pageScript = 'contact'; ?>
+<?php
+$pageScript = 'contact';
+$errors   = $errors   ?? [];
+$old      = $old      ?? [];
+$subjects = $subjects ?? \App\Controllers\ContactController::SUBJECTS;
+$fieldError = static function (string $field) use ($errors): string {
+    return isset($errors[$field])
+        ? '<p class="mt-2 text-xs text-red-300" id="' . $field . '-error">' . e($errors[$field]) . '</p>'
+        : '';
+};
+?>
 
 <!-- ── Hero ──────────────────────────────────────────────── -->
 <section class="hero" style="min-height:65svh;">
@@ -48,17 +58,21 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div>
               <label for="name" class="block text-xs text-gray-400 mb-2 uppercase tracking-wider">Name *</label>
-              <input type="text" name="name" id="name" required autocomplete="name"
+              <input type="text" name="name" id="name" required maxlength="150" autocomplete="name"
+                     value="<?= e($old['name'] ?? '') ?>"<?= isset($errors['name']) ? ' aria-invalid="true" aria-describedby="name-error"' : '' ?>
                      class="w-full bg-white/3 border border-white/10 rounded-xl px-4 py-3 text-sm text-white
                             focus:outline-none focus:border-white/30 transition placeholder-gray-600"
                      placeholder="Your name">
+              <?= $fieldError('name') ?>
             </div>
             <div>
               <label for="email" class="block text-xs text-gray-400 mb-2 uppercase tracking-wider">Email *</label>
-              <input type="email" name="email" id="email" required autocomplete="email"
+              <input type="email" name="email" id="email" required maxlength="150" autocomplete="email"
+                     value="<?= e($old['email'] ?? '') ?>"<?= isset($errors['email']) ? ' aria-invalid="true" aria-describedby="email-error"' : '' ?>
                      class="w-full bg-white/3 border border-white/10 rounded-xl px-4 py-3 text-sm text-white
                             focus:outline-none focus:border-white/30 transition placeholder-gray-600"
                      placeholder="you@company.com">
+              <?= $fieldError('email') ?>
             </div>
           </div>
 
@@ -69,21 +83,20 @@
                            focus:outline-none focus:border-white/30 transition appearance-none"
                     style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 1rem center">
               <option value="">Select a topic…</option>
-              <option>AI Project Development</option>
-              <option>Full-Stack Development</option>
-              <option>Technical Consulting</option>
-              <option>Speaking / Writing</option>
-              <option>Collaboration / Partnership</option>
-              <option>Something else</option>
+              <?php foreach ($subjects as $topic): ?>
+              <option value="<?= e($topic) ?>"<?= ($old['subject'] ?? '') === $topic ? ' selected' : '' ?>><?= e($topic) ?></option>
+              <?php endforeach; ?>
             </select>
+            <?= $fieldError('subject') ?>
           </div>
 
           <div>
             <label for="message" class="block text-xs text-gray-400 mb-2 uppercase tracking-wider">Message *</label>
-            <textarea name="message" id="message" required rows="6"
+            <textarea name="message" id="message" required rows="6" minlength="10" maxlength="5000"<?= isset($errors['message']) ? ' aria-invalid="true" aria-describedby="message-error"' : '' ?>
                       class="w-full bg-white/3 border border-white/10 rounded-xl px-4 py-3 text-sm text-white
                              focus:outline-none focus:border-white/30 transition placeholder-gray-600 resize-none"
-                      placeholder="Tell me about your project, what you're trying to build, or what challenge you're facing…"></textarea>
+                      placeholder="Tell me about your project, what you're trying to build, or what challenge you're facing…"><?= e($old['message'] ?? '') ?></textarea>
+            <?= $fieldError('message') ?>
           </div>
 
           <button type="submit" id="submit-btn"

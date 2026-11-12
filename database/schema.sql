@@ -158,14 +158,18 @@ CREATE TABLE IF NOT EXISTS `settings` (
 -- ── Contact submissions ───────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `contact_submissions` (
   `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `name`       VARCHAR(200) NOT NULL,
-  `email`      VARCHAR(200) NOT NULL,
-  `subject`    VARCHAR(255) NULL,
+  `name`       VARCHAR(150) NOT NULL,
+  `email`      VARCHAR(150) NOT NULL,
+  `subject`    VARCHAR(300) NULL,
   `message`    TEXT         NOT NULL,
-  `ip_address` VARCHAR(45)  NULL,
-  `read_at`    DATETIME     NULL,
+  `ip`         VARCHAR(45)  NULL COMMENT 'IPv4 or IPv6',
+  `user_agent` VARCHAR(500) NULL,
+  `is_read`    TINYINT(1)   NOT NULL DEFAULT 0,
+  `is_replied` TINYINT(1)   NOT NULL DEFAULT 0,
+  `replied_at` DATETIME     NULL,
   `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
+  KEY `idx_contact_read`    (`is_read`),
   KEY `idx_contact_email`   (`email`),
   KEY `idx_contact_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
