@@ -57,17 +57,22 @@ class Router
     public function dispatch(string $requestUri, string $requestMethod): void
     {
         // Strip query string
+        // (parse_url() returns false/null for malformed URIs such as "//")
         $path = parse_url($requestUri, PHP_URL_PATH);
-        $path = '/' . trim($path, '/');
-        if ($path === '//') $path = '/';
+        $path = '/' . trim(is_string($path) ? $path : '', '/');
 
-        // Support method override via POST _method field
-        if ($requestMethod === 'POST' && isset($_POST['_method'])) {
-            $requestMethod = strtoupper($_POST['_method']);
+        // Support method override via POST _method field (PUT/DELETE only,
+        // so a form can never be "overridden" into a GET)
+        $requestMethod = strtoupper($requestMethod);
+        if ($requestMethod === 'POST' && isset($_POST['_method']) && is_string($_POST['_method'])) {
+            $override = strtoupper($_POST['_method']);
+            if (in_array($override, ['PUT', 'DELETE'], true)) {
+                $requestMethod = $override;
+            }
         }
 
         foreach ($this->routes as $route) {
-            if ($route['method'] !== strtoupper($requestMethod)) {
+            if ($route['method'] !== $requestMethod) {
                 continue;
             }
 
@@ -121,7 +126,16 @@ class Router
 
     private function compilePattern(string $uri): string
     {
-        $pattern = preg_replace('/\{([a-zA-Z_]+)\}/', '(?P<$1>[^/]+)', $uri);
+        // Quote the literal parts so "." in /sitemap.xml matches only a dot.
+        $parts   = preg_split('/(\{[a-zA-Z_]+\})/', $uri, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [];
+        $pattern = '';
+        foreach ($parts as $part) {
+            if (preg_match('/^\{([a-zA-Z_]+)\}$/', $part, $m)) {
+                $pattern .= '(?P<' . $m[1] . '>[^/]+)';
+            } else {
+                $pattern .= preg_quote($part, '#');
+            }
+        }
         return '#^' . $pattern . '$#';
     }
 

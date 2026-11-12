@@ -1,4 +1,4 @@
-name: PHP lint
+name: PHP lint and tests
 
 on:
   push:
@@ -29,3 +29,23 @@ jobs:
             php -l "$file" > /dev/null || status=1
           done < <(find . -name '*.php' -not -path './.git/*' -not -path './vendor/*' -print0)
           exit $status
+
+  test:
+    name: PHPUnit (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring
+          coverage: none
+          tools: composer:v2
+      - name: Install dev dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Run unit tests
+        run: vendor/bin/phpunit

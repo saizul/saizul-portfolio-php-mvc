@@ -115,6 +115,7 @@ chmod 755 storage/
 chmod 755 storage/cache/
 chmod 755 storage/logs/
 chmod 755 storage/sitemaps/
+chmod 755 storage/ratelimit/   # contact-form rate limiter (created on first use if storage/ is writable)
 chmod 755 public/uploads/
 
 # Protect sensitive files
