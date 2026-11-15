@@ -16,6 +16,9 @@ ServerSignature Off
     RewriteCond %{REQUEST_URI} !^/$
     RewriteRule ^ %1 [R=301,L]
 
+    # Never run or serve scripts from the uploads folder (see App\Core\UploadPolicy)
+    RewriteRule ^uploads/.*\.(php\d?|phtml|phar|pht|cgi|pl|py|sh|shtml)$ - [F,L,NC]
+
     # Serve real files/dirs directly
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
