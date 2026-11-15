@@ -4,17 +4,12 @@ namespace App\Core;
 /**
  * Upload — handles single and bulk file uploads.
  * Converts images to WebP (if GD available), compresses, validates.
+ * Validation rules live in App\Core\UploadPolicy.
  */
 class Upload {
 
-    private static array $allowedMime = [
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
-        'application/pdf', 'model/gltf-binary',
-    ];
-
-    private static array $imgMime = ['image/jpeg','image/png','image/gif','image/webp'];
-
-    private static int $maxBytes = 10_485_760; // 10 MB
+    /** @var array<string,string> original filename => reason, from the last handleMultiple() call */
+    private static array $rejected = [];
 
     /**
      * Handle a single $_FILES field.
@@ -36,6 +31,7 @@ class Upload {
      * Returns array of result arrays.
      */
     public static function handleMultiple(string $fileKey, string $folder = 'general', bool $toWebP = true): array {
+        self::$rejected = [];
         if (empty($_FILES[$fileKey])) return [];
 
         $files   = $_FILES[$fileKey];
@@ -50,61 +46,95 @@ class Upload {
                 'error'    => is_array($files['error'])    ? $files['error'][$i]    : $files['error'],
                 'size'     => is_array($files['size'])     ? $files['size'][$i]     : $files['size'],
             ];
-            if ($file['error'] !== UPLOAD_ERR_OK) continue;
+            $label = UploadPolicy::cleanOriginalName((string) $file['name']);
+            if ($file['error'] !== UPLOAD_ERR_OK) {
+                if ($file['error'] !== UPLOAD_ERR_NO_FILE) {
+                    self::$rejected[$label] = 'Upload error: ' . $file['error'];
+                }
+                continue;
+            }
             try {
                 $results[] = self::processFile($file, $folder, $toWebP);
             } catch (\Throwable $e) {
-                // Skip invalid files silently; caller can check count
+                // Skip the file but remember why, so the caller can report it.
+                self::$rejected[$label] = $e->getMessage();
             }
         }
         return $results;
     }
 
+    /**
+     * Validate an uploaded file without moving it.
+     *
+     * @return array{mime:string, ext:string, width:int|null, height:int|null}
+     * @throws \RuntimeException when the file breaks any UploadPolicy rule
+     */
+    public static function inspect(string $tmpPath, string $clientName, int $size): array {
+        UploadPolicy::assertSize($size);
+
+        // finfo takes precedence over the browser-reported type and the filename.
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $head  = (string) @file_get_contents($tmpPath, false, null, 0, 1024);
+        $mime  = UploadPolicy::refineMime((string) $finfo->file($tmpPath), $clientName, $head);
+        $ext   = UploadPolicy::extensionFor($mime);
+
+        $width = $height = null;
+        if (UploadPolicy::isRaster($mime)) {
+            $dims = @getimagesize($tmpPath);
+            if (!$dims) {
+                throw new \RuntimeException('File is not a readable image.');
+            }
+            UploadPolicy::assertDimensions((int) $dims[0], (int) $dims[1]);
+            [$width, $height] = [(int) $dims[0], (int) $dims[1]];
+        } elseif ($mime === 'image/svg+xml') {
+            UploadPolicy::assertSafeSvg((string) file_get_contents($tmpPath));
+        }
+
+        return ['mime' => $mime, 'ext' => $ext, 'width' => $width, 'height' => $height];
+    }
+
+    /** Reasons for files skipped by the last handleMultiple() call, keyed by original name. */
+    public static function lastRejected(): array { return self::$rejected; }
+
     private static function processFile(array $file, string $folder, bool $toWebP): array {
-        // Size check
-        if ($file['size'] > self::$maxBytes) {
-            throw new \RuntimeException('File too large (max 10 MB).');
+        if (!is_uploaded_file($file['tmp_name'])) {
+            throw new \RuntimeException('Not an uploaded file.');
+        }
+        $folder   = UploadPolicy::sanitizeFolder($folder);
+        $info     = self::inspect($file['tmp_name'], (string) $file['name'], (int) $file['size']);
+        $realMime = $info['mime'];
+
+        // Build upload path; the uploads root gets a no-execute .htaccess.
+        $uploadsRoot = BASE_PATH . '/public/uploads';
+        self::ensureUploadsRoot($uploadsRoot);
+        $uploadDir = "{$uploadsRoot}/{$folder}";
+        if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
+            throw new \RuntimeException('Could not create upload folder.');
         }
 
-        // MIME validation (finfo takes precedence over browser-reported type)
-        $finfo    = new \finfo(FILEINFO_MIME_TYPE);
-        $realMime = $finfo->file($file['tmp_name']);
-        if (!in_array($realMime, self::$allowedMime, true)) {
-            throw new \RuntimeException("File type not allowed: {$realMime}");
-        }
-
-        // Build upload path
-        $uploadDir = BASE_PATH . "/public/uploads/{$folder}";
-        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
-
-        $ext      = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $safeName = bin2hex(random_bytes(8)) . '.' . $ext;
+        // Extension comes from the sniffed type, never from the client filename.
+        $safeName = bin2hex(random_bytes(8)) . '.' . $info['ext'];
         $destPath = "{$uploadDir}/{$safeName}";
         $webPath  = "/uploads/{$folder}/{$safeName}";
 
         if (!move_uploaded_file($file['tmp_name'], $destPath)) {
             throw new \RuntimeException('Could not move uploaded file.');
         }
+        @chmod($destPath, 0644);
 
         $result = [
             'path'      => $webPath,
             'webp_path' => null,
-            'width'     => null,
-            'height'    => null,
+            'width'     => $info['width'],
+            'height'    => $info['height'],
             'mime'      => $realMime,
-            'size'      => $file['size'],
-            'filename'  => $file['name'],
+            'size'      => (int) $file['size'],
+            'filename'  => UploadPolicy::cleanOriginalName((string) $file['name']),
             'folder'    => $folder,
         ];
 
         // Image processing
-        if (in_array($realMime, self::$imgMime, true) && function_exists('imagecreatefromjpeg')) {
-            $dims = @getimagesize($destPath);
-            if ($dims) {
-                $result['width']  = $dims[0];
-                $result['height'] = $dims[1];
-            }
-
+        if (UploadPolicy::isRaster($realMime) && function_exists('imagecreatefromjpeg')) {
             // WebP conversion
             if ($toWebP && $realMime !== 'image/webp' && $realMime !== 'image/svg+xml') {
                 $webpName = bin2hex(random_bytes(8)) . '.webp';
@@ -117,7 +147,7 @@ class Upload {
             }
 
             // Compress original if large
-            if ($file['size'] > 500_000 && $realMime !== 'image/webp') {
+            if ((int) $file['size'] > 500_000 && $realMime !== 'image/webp') {
                 self::compressImage($destPath, $realMime, 82);
             }
         }
@@ -157,6 +187,17 @@ class Upload {
         } catch (\Throwable) {}
     }
 
+    /** Write public/uploads/.htaccess (no script execution) if it is missing. */
+    private static function ensureUploadsRoot(string $root): void {
+        if (!is_dir($root) && !mkdir($root, 0755, true) && !is_dir($root)) {
+            throw new \RuntimeException('Could not create uploads directory.');
+        }
+        $htaccess = $root . '/.htaccess';
+        if (!is_file($htaccess)) {
+            @file_put_contents($htaccess, UploadPolicy::uploadsHtaccess(), LOCK_EX);
+        }
+    }
+
     /** Allowed MIME types for external validation checks */
-    public static function allowedMimeTypes(): array { return self::$allowedMime; }
+    public static function allowedMimeTypes(): array { return UploadPolicy::allowedMimeTypes(); }
 }

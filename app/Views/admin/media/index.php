@@ -1,5 +1,5 @@
 <?php
-$csrfToken   = \App\Core\Auth::csrfToken();
+$csrfToken   = \App\Core\Auth::generateCsrfToken();
 $pageTitle   = 'Media Library';
 $GLOBALS['pageTitle'] = $pageTitle;
 $folders = ['all','portfolio','projects','blog','profile','general'];

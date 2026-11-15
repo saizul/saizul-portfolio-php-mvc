@@ -27,6 +27,19 @@ $v = Validator::make($_POST, ['email' => 'required|email|max:150']);
 if ($v->fails()) { $errors = $v->errors(); } else { $clean = $v->validated(); }
 ```
 
+## Media upload hardening
+
+Admin uploads (`/admin/media`, `App\Core\Upload`) are checked by `App\Core\UploadPolicy` before anything is written to `public/uploads/`:
+
+- **Content decides the type.** The MIME type is sniffed with `finfo`; the stored extension comes from that type (`jpg`, `png`, `gif`, `webp`, `svg`, `pdf`, `glb`), never from the client filename. A PNG with PHP code appended and named `shell.php` is stored as `<random>.png`.
+- **Safe folders.** The folder field may only contain lowercase `[a-z0-9_-]` segments, at most 3 levels deep (`blog/2026`). `..`, backslashes and other characters are rejected.
+- **SVG checks.** SVG is an active document, so uploads are parsed and rejected if they contain `<script>`, `<foreignObject>`, `<iframe>`/`<embed>`/`<object>`, `on*` event handlers, `javascript:` URLs, links that are not in-document `#id` references (except `data:image/...` in `<image>`), external CSS `url()`/`@import`, DOCTYPE/entity declarations or processing instructions.
+- **Image limits.** Raster images must be readable by `getimagesize()` and at most 12,000 px per side and 40 megapixels, so a tiny "decompression bomb" cannot exhaust GD memory during WebP conversion.
+- **No script execution in uploads.** On first use, `public/uploads/.htaccess` is written to switch off PHP and CGI handlers, deny script extensions, send `nosniff`, and serve SVGs with a sandboxing CSP. `public/.htaccess` also returns 403 for script extensions under `/uploads/`. On Nginx, add the equivalent, for example `location ~* ^/uploads/.*\.(php\d?|phtml|phar)$ { deny all; }`.
+- **Clear feedback.** Bulk uploads report which files were skipped and why (`rejected` in the AJAX response), and deleting media only ever removes files inside `public/uploads/`.
+
+Files uploaded before this change keep their names. To look for anything that should not be there, run `find public/uploads -type f ! -iregex '.*\.\(jpg\|jpeg\|png\|gif\|webp\|svg\|pdf\|glb\)'`.
+
 ## Tests
 
 Unit tests use PHPUnit (dev dependency only; nothing is needed on the server):
@@ -36,7 +49,7 @@ composer install
 composer test        # or: vendor/bin/phpunit
 ```
 
-They cover the router (parameters, method override, literal dots, 404s, malformed URIs), the validator, the rate limiter (sliding window with an injected clock) and the contact-form rules. `vendor/` is gitignored.
+They cover the router (parameters, method override, literal dots, 404s, malformed URIs), the validator, the rate limiter (sliding window with an injected clock), the contact-form rules and the upload policy (MIME-derived extensions, folder names, SVG and image-size checks, using small generated PNG/SVG/GLB files). `vendor/` is gitignored.
 
 ## CI
 

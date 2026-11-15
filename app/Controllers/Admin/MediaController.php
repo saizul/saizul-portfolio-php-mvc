@@ -1,11 +1,11 @@
 <?php declare(strict_types=1);
 namespace App\Controllers\Admin;
-use App\Core\{Controller, Auth, Upload};
+use App\Core\{Controller, Upload, UploadPolicy};
 use App\Models\Media;
 
 class MediaController extends Controller {
     private Media $model;
-    public function __construct() { Auth::requireAdmin(); $this->model = new Media(); }
+    public function __construct() { $this->requireAdmin(); $this->model = new Media(); }
 
     public function index(): void {
         $folder = $_GET['folder'] ?? 'all';
@@ -22,7 +22,7 @@ class MediaController extends Controller {
 
     /** Single or AJAX single upload */
     public function upload(): void {
-        Auth::verifyCsrf();
+        $this->verifyCsrf();
         $folder = $_POST['folder'] ?? 'general';
         try {
             $result = Upload::handle('file', $folder, true);
@@ -48,15 +48,16 @@ class MediaController extends Controller {
                 header('Content-Type: application/json'); http_response_code(422);
                 echo json_encode(['ok'=>false,'error'=>$e->getMessage()]); exit;
             }
-            $this->redirect('/admin/media', $e->getMessage(), 'error');
-            return;
+            $this->flash('error', $e->getMessage());
+            $this->redirect(url('/admin/media'));
         }
-        $this->redirect('/admin/media', 'File uploaded.');
+        $this->flash('success', 'File uploaded.');
+        $this->redirect(url('/admin/media'));
     }
 
     /** Bulk upload handler */
     public function bulkUpload(): void {
-        Auth::verifyCsrf();
+        $this->verifyCsrf();
         $folder  = $_POST['folder'] ?? 'general';
         $results = Upload::handleMultiple('files', $folder, true);
         foreach ($results as $r) {
@@ -72,15 +73,26 @@ class MediaController extends Controller {
                 'height'    => $r['height'],
             ]);
         }
+        $rejected = Upload::lastRejected();
         if ($this->isAjax()) {
             header('Content-Type: application/json');
-            echo json_encode(['ok'=>true,'count'=>count($results)]); exit;
+            echo json_encode(['ok'=>true,'count'=>count($results),'rejected'=>$rejected]); exit;
         }
-        $this->redirect('/admin/media', count($results) . ' files uploaded.');
+        $message = count($results) . ' files uploaded.';
+        if ($rejected) {
+            $message .= ' ' . count($rejected) . ' skipped: ' . implode('; ', array_map(
+                static fn(string $name, string $why): string => "{$name} ({$why})",
+                array_keys($rejected),
+                $rejected
+            ));
+        }
+        $this->flash($rejected ? 'error' : 'success', $message);
+        $this->redirect(url('/admin/media'));
     }
 
-    public function update(int $id): void {
-        Auth::verifyCsrf();
+    public function update(string $id): void {
+        $id = (int) $id;
+        $this->verifyCsrf();
         $this->model->update($id, [
             'alt_text'    => trim($_POST['alt_text']    ?? ''),
             'title'       => trim($_POST['title']       ?? ''),
@@ -89,11 +101,13 @@ class MediaController extends Controller {
         if ($this->isAjax()) {
             header('Content-Type: application/json'); echo json_encode(['ok'=>true]); exit;
         }
-        $this->redirect('/admin/media', 'Media updated.');
+        $this->flash('success', 'Media updated.');
+        $this->redirect(url('/admin/media'));
     }
 
-    public function delete(int $id): void {
-        Auth::verifyCsrf();
+    public function delete(string $id): void {
+        $id = (int) $id;
+        $this->verifyCsrf();
         $item = $this->model->find($id);
         if ($item) {
             $this->deleteFile($item['filepath']);
@@ -103,11 +117,12 @@ class MediaController extends Controller {
         if ($this->isAjax()) {
             header('Content-Type: application/json'); echo json_encode(['ok'=>true]); exit;
         }
-        $this->redirect('/admin/media', 'File deleted.');
+        $this->flash('success', 'File deleted.');
+        $this->redirect(url('/admin/media'));
     }
 
     public function bulkDelete(): void {
-        Auth::verifyCsrf();
+        $this->verifyCsrf();
         $ids = json_decode($_POST['ids'] ?? '[]', true);
         foreach ((array)$ids as $id) {
             $item = $this->model->find((int)$id);
@@ -119,12 +134,14 @@ class MediaController extends Controller {
         if ($this->isAjax()) {
             header('Content-Type: application/json'); echo json_encode(['ok'=>true]); exit;
         }
-        $this->redirect('/admin/media', 'Files deleted.');
+        $this->flash('success', 'Files deleted.');
+        $this->redirect(url('/admin/media'));
     }
 
     private function deleteFile(string $webPath): void {
-        $abs = BASE_PATH . '/public' . $webPath;
-        if (file_exists($abs)) @unlink($abs);
+        // Only ever delete inside public/uploads/, whatever the stored path says.
+        $abs = UploadPolicy::resolveStoredPath(BASE_PATH . '/public', $webPath);
+        if ($abs !== null && is_file($abs)) @unlink($abs);
     }
 
     private function isAjax(): bool { return !empty($_SERVER['HTTP_X_REQUESTED_WITH']); }
